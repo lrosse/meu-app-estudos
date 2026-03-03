@@ -15,18 +15,24 @@ def verificar_login(usuario, senha):
             return False
             
         # Limpa espaços em branco e converte para string para comparação robusta
-        # Para o nome de usuário, podemos considerar case-insensitivity se for o caso
-        # Para a senha, mantemos case-sensitive, mas removemos espaços extras
         usuario_limpo = str(usuario).strip()
         senha_limpa = str(senha).strip()
 
-        # Aplica .strip() nas colunas do DataFrame antes de comparar
-        df["usuario_limpo"] = df["usuario"].astype(str).str.strip()
-        df["senha_limpa"] = df["senha"].astype(str).str.strip()
+        # Aplica .strip() e garante que as colunas são strings antes de comparar
+        df["usuario_planilha"] = df["usuario"].astype(str).str.strip()
+        df["senha_planilha"] = df["senha"].astype(str).str.strip()
+
+        # --- DEBUG TEMPORÁRIO --- 
+        # st.write(f"Usuário input: '{usuario_limpo}', Tipo: {type(usuario_limpo)}")
+        # st.write(f"Senha input: '{senha_limpa}', Tipo: {type(senha_limpa)}")
+        # if not df.empty:
+        #     st.write(f"Usuários na planilha: {df['usuario_planilha'].tolist()}")
+        #     st.write(f"Senhas na planilha: {df['senha_planilha'].tolist()}")
+        # --- FIM DEBUG TEMPORÁRIO ---
 
         # Filtra o usuário e senha usando os valores limpos
-        user_row = df[(df["usuario_limpo"] == usuario_limpo) & 
-                      (df["senha_limpa"] == senha_limpa)]
+        user_row = df[(df["usuario_planilha"] == usuario_limpo) & 
+                      (df["senha_planilha"] == senha_limpa)]
         
         return not user_row.empty
     except Exception as e:
@@ -51,6 +57,7 @@ def registrar_usuario(usuario, senha):
         usuario_limpo = str(usuario).strip()
 
         # 2. Verifica se o usuário já existe
+        # Aplica .strip() na coluna 'usuario' do DataFrame antes de verificar
         if usuario_limpo in existing_users_df["usuario"].astype(str).str.strip().values:
             st.warning("Este nome de usuário já está em uso!")
             return False

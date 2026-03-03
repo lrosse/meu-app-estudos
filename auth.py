@@ -19,44 +19,36 @@ def verificar_login(usuario, senha):
                       (df["senha"].astype(str) == str(senha))]
         return not user_row.empty
     except Exception as e:
-        # Se quiser ver o erro no console do Streamlit, descomente a linha abaixo:
-        # st.error(f"Erro no login: {e}")
+        st.error(f"Erro no login: {e}")
         return False
 
 def registrar_usuario(usuario, senha):
     try:
-        # 1. Tenta ler os dados atuais
-        try:
-            df = conn.read(worksheet="Usuarios", ttl=0)
-            # Se a aba existe mas está vazia de dados (só cabeçalho ou nada)
-            if df is None or df.empty:
-                df = pd.DataFrame(columns=["usuario", "senha"])
-        except Exception:
-            # Se a aba nem sequer existir
-            df = pd.DataFrame(columns=["usuario", "senha"])
+        # 1. Tenta ler os dados atuais para verificar se o usuário já existe
+        # Usamos ttl=0 para garantir que estamos lendo os dados mais recentes
+        existing_users_df = conn.read(worksheet="Usuarios", ttl=0)
 
-        # 2. Garante que as colunas existem antes de verificar
-        if "usuario" not in df.columns:
-            df = pd.DataFrame(columns=["usuario", "senha"])
+        # Garante que as colunas existem para evitar erros se a planilha estiver vazia
+        if existing_users_df.empty or "usuario" not in existing_users_df.columns:
+            existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
 
-        # 3. Verifica se o usuário já existe
-        if usuario in df["usuario"].astype(str).values:
+        # 2. Verifica se o usuário já existe
+        if usuario in existing_users_df["usuario"].astype(str).values:
             st.warning("Este nome de usuário já está em uso.")
             return False
         
-        # 4. Cria o novo registro
-        novo_user = pd.DataFrame([{"usuario": str(usuario), "senha": str(senha)}])
+        # 3. Cria o novo registro como um DataFrame de uma única linha
+        novo_user_df = pd.DataFrame([{"usuario": str(usuario), "senha": str(senha)}])
         
-        # 5. Junta com os dados antigos (garantindo que não venha lixo)
-        df_atualizado = pd.concat([df, novo_user], ignore_index=True).dropna(how='all')
+        # 4. Adiciona a nova linha à planilha usando conn.append()
+        # Este método é mais eficiente para adicionar novas linhas do que reescrever a planilha inteira
+        conn.append(worksheet="Usuarios", data=novo_user_df)
         
-        # 6. ENVIO CRÍTICO: Tenta atualizar a planilha
-        conn.update(worksheet="Usuarios", data=df_atualizado)
+        st.success("Usuário registrado com sucesso!")
         
         # Limpa o cache para garantir que a próxima leitura veja o novo usuário
         st.cache_data.clear()
         return True
     except Exception as e:
-        # Isso vai mostrar o erro real na tela para você me dizer o que é:
         st.error(f"Erro técnico ao registrar: {e}")
         return False

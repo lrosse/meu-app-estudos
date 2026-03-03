@@ -26,10 +26,14 @@ def registrar_usuario(usuario, senha):
     try:
         # 1. Tenta ler os dados atuais para verificar se o usuário já existe
         # Usamos ttl=0 para garantir que estamos lendo os dados mais recentes
-        existing_users_df = conn.read(worksheet="Usuarios", ttl=0)
+        try:
+            existing_users_df = conn.read(worksheet="Usuarios", ttl=0)
+        except Exception:
+            # Se a aba não existir ou houver erro na leitura, criamos um DF vazio
+            existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
 
         # Garante que as colunas existem para evitar erros se a planilha estiver vazia
-        if existing_users_df.empty or "usuario" not in existing_users_df.columns:
+        if existing_users_df is None or existing_users_df.empty or "usuario" not in existing_users_df.columns:
             existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
 
         # 2. Verifica se o usuário já existe
@@ -37,12 +41,15 @@ def registrar_usuario(usuario, senha):
             st.warning("Este nome de usuário já está em uso.")
             return False
         
-        # 3. Cria o novo registro como um DataFrame de uma única linha
+        # 3. Cria o novo registro
         novo_user_df = pd.DataFrame([{"usuario": str(usuario), "senha": str(senha)}])
         
-        # 4. Adiciona a nova linha à planilha usando conn.append()
-        # Este método é mais eficiente para adicionar novas linhas do que reescrever a planilha inteira
-        conn.append(worksheet="Usuarios", data=novo_user_df)
+        # 4. Concatena e atualiza a planilha inteira
+        # Como a biblioteca st-gsheets-connection não possui o método .append(),
+        # a forma correta de adicionar dados é via .update() com o DataFrame completo.
+        df_atualizado = pd.concat([existing_users_df, novo_user_df], ignore_index=True)
+        
+        conn.update(worksheet="Usuarios", data=df_atualizado)
         
         st.success("Usuário registrado com sucesso!")
         

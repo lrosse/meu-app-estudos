@@ -7,16 +7,27 @@ conn = st.connection("gsheets", type=GSheetsConnection)
 
 def verificar_login(usuario, senha):
     try:
-        # Tenta ler a aba Usuarios
+        # Tenta ler a aba Usuarios, garantindo que não use cache
         df = conn.read(worksheet="Usuarios", ttl=0)
         
-        # Se a planilha estiver totalmente vazia, o df pode vir sem as colunas
-        if df.empty or "usuario" not in df.columns:
+        # Se a planilha estiver totalmente vazia ou sem as colunas esperadas
+        if df.empty or "usuario" not in df.columns or "senha" not in df.columns:
             return False
             
-        # Filtra o usuário e senha
-        user_row = df[(df["usuario"].astype(str) == str(usuario)) & 
-                      (df["senha"].astype(str) == str(senha))]
+        # Limpa espaços em branco e converte para string para comparação robusta
+        # Para o nome de usuário, podemos considerar case-insensitivity se for o caso
+        # Para a senha, mantemos case-sensitive, mas removemos espaços extras
+        usuario_limpo = str(usuario).strip()
+        senha_limpa = str(senha).strip()
+
+        # Aplica .strip() nas colunas do DataFrame antes de comparar
+        df["usuario_limpo"] = df["usuario"].astype(str).str.strip()
+        df["senha_limpa"] = df["senha"].astype(str).str.strip()
+
+        # Filtra o usuário e senha usando os valores limpos
+        user_row = df[(df["usuario_limpo"] == usuario_limpo) & 
+                      (df["senha_limpa"] == senha_limpa)]
+        
         return not user_row.empty
     except Exception as e:
         st.error(f"Erro no login: {e}")
@@ -36,17 +47,19 @@ def registrar_usuario(usuario, senha):
         if existing_users_df is None or existing_users_df.empty or "usuario" not in existing_users_df.columns:
             existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
 
+        # Limpa espaços em branco do nome de usuário antes de verificar a existência
+        usuario_limpo = str(usuario).strip()
+
         # 2. Verifica se o usuário já existe
-        if usuario in existing_users_df["usuario"].astype(str).values:
-            st.warning("Este nome de usuário já está em uso.")
+        if usuario_limpo in existing_users_df["usuario"].astype(str).str.strip().values:
+            st.warning("Este nome de usuário já está em uso!")
             return False
         
         # 3. Cria o novo registro
-        novo_user_df = pd.DataFrame([{"usuario": str(usuario), "senha": str(senha)}])
+        # Armazenamos o usuário e senha limpos para evitar problemas futuros
+        novo_user_df = pd.DataFrame([{"usuario": usuario_limpo, "senha": str(senha).strip()}])
         
         # 4. Concatena e atualiza a planilha inteira
-        # Como a biblioteca st-gsheets-connection não possui o método .append(),
-        # a forma correta de adicionar dados é via .update() com o DataFrame completo.
         df_atualizado = pd.concat([existing_users_df, novo_user_df], ignore_index=True)
         
         conn.update(worksheet="Usuarios", data=df_atualizado)

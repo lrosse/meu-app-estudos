@@ -2,82 +2,76 @@ import streamlit as st
 from streamlit_gsheets import GSheetsConnection
 import pandas as pd
 
-# Inicializa a conexão
+# Conexão única compartilhada
 conn = st.connection("gsheets", type=GSheetsConnection)
 
-def verificar_login(usuario, senha):
+
+def _normalizar_senha(valor: str) -> str:
+    """Corrige o problema do Google Sheets que converte '1234' em '1234.0'."""
+    s = str(valor).strip()
+    if s.endswith(".0") and s[:-2].isdigit():
+        return s[:-2]
+    return s
+
+
+def verificar_login(usuario: str, senha: str) -> bool:
+    """Verifica credenciais contra a aba 'Usuarios' do Google Sheets.
+
+    Retorna True se o par (usuario, senha) for encontrado, False caso contrário.
+    NÃO define session_state aqui — isso é responsabilidade do app.py,
+    que chama esta função e, em caso de sucesso, seta st.session_state.usuario_logado.
+    """
     try:
-        # Tenta ler a aba Usuarios, garantindo que não use cache
         df = conn.read(worksheet="Usuarios", ttl=0)
-        
-        # Se a planilha estiver totalmente vazia ou sem as colunas esperadas
+
         if df.empty or "usuario" not in df.columns or "senha" not in df.columns:
-            st.warning("Planilha de usuários vazia ou colunas ausentes.")
+            st.warning("Planilha de usuários vazia ou com estrutura incorreta.")
             return False
-            
-        # Limpa espaços em branco e converte para string para comparação robusta
+
         usuario_limpo = str(usuario).strip()
-        senha_limpa = str(senha).strip()
+        senha_limpa = _normalizar_senha(senha)
 
-        # Aplica .strip() e garante que as colunas são strings antes de comparar
-        df["usuario_planilha"] = df["usuario"].astype(str).str.strip()
-        
-        # Normaliza a senha da planilha: remove '.0' se for um número inteiro formatado como float
-        df["senha_planilha"] = df["senha"].astype(str).str.strip().apply(lambda x: x.replace('.0', '') if x.endswith('.0') and x[:-2].isdigit() else x)
+        df["_u"] = df["usuario"].astype(str).str.strip()
+        df["_s"] = df["senha"].apply(_normalizar_senha)
 
-        # --- DEBUG ATIVO ---
-        st.write(f"DEBUG: Usuário input: \'{usuario_limpo}\' (Tipo: {type(usuario_limpo)}) ")
-        st.write(f"DEBUG: Senha input: \'{senha_limpa}\' (Tipo: {type(senha_limpa)}) ")
-        st.write(f"DEBUG: Usuários na planilha (processado): {df["usuario_planilha"].tolist()}")
-        st.write(f"DEBUG: Senhas na planilha (processado): {df["senha_planilha"].tolist()}")
-        # --- FIM DEBUG ATIVO ---
+        encontrado = df[(df["_u"] == usuario_limpo) & (df["_s"] == senha_limpa)]
+        return not encontrado.empty
 
-        # Filtra o usuário e senha usando os valores limpos
-        user_row = df[(df["usuario_planilha"] == usuario_limpo) & 
-                      (df["senha_planilha"] == senha_limpa)]
-        
-        return not user_row.empty
     except Exception as e:
-        st.error(f"Erro no login: {e}")
+        st.error(f"Erro ao verificar login: {e}")
         return False
 
-def registrar_usuario(usuario, senha):
+
+def registrar_usuario(usuario: str, senha: str) -> bool:
+    """Cria um novo usuário na aba 'Usuarios'.
+
+    Retorna True em caso de sucesso, False se o usuário já existir ou ocorrer erro.
+    """
     try:
-        # 1. Tenta ler os dados atuais para verificar se o usuário já existe
-        # Usamos ttl=0 para garantir que estamos lendo os dados mais recentes
+        # Lê registros atuais com ttl=0 para garantir consistência
         try:
-            existing_users_df = conn.read(worksheet="Usuarios", ttl=0)
+            df_existentes = conn.read(worksheet="Usuarios", ttl=0)
         except Exception:
-            # Se a aba não existir ou houver erro na leitura, criamos um DF vazio
-            existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
+            df_existentes = pd.DataFrame(columns=["usuario", "senha"])
 
-        # Garante que as colunas existem para evitar erros se a planilha estiver vazia
-        if existing_users_df is None or existing_users_df.empty or "usuario" not in existing_users_df.columns:
-            existing_users_df = pd.DataFrame(columns=["usuario", "senha"])
+        if df_existentes is None or df_existentes.empty or "usuario" not in df_existentes.columns:
+            df_existentes = pd.DataFrame(columns=["usuario", "senha"])
 
-        # Limpa espaços em branco do nome de usuário antes de verificar a existência
         usuario_limpo = str(usuario).strip()
 
-        # 2. Verifica se o usuário já existe
-        # Aplica .strip() na coluna 'usuario' do DataFrame antes de verificar
-        if usuario_limpo in existing_users_df["usuario"].astype(str).str.strip().values:
-            st.warning("Este nome de usuário já está em uso!")
-            return False
-        
-        # 3. Cria o novo registro
-        # Armazenamos o usuário e senha limpos para evitar problemas futuros
-        novo_user_df = pd.DataFrame([{"usuario": usuario_limpo, "senha": str(senha).strip()}])
-        
-        # 4. Concatena e atualiza a planilha inteira
-        df_atualizado = pd.concat([existing_users_df, novo_user_df], ignore_index=True)
-        
+        # Verifica duplicidade
+        usuarios_existentes = df_existentes["usuario"].astype(str).str.strip().values
+        if usuario_limpo in usuarios_existentes:
+            return False  # Usuário já existe — app.py exibe a mensagem
+
+        # Cria e persiste o novo registro
+        novo = pd.DataFrame([{"usuario": usuario_limpo, "senha": str(senha).strip()}])
+        df_atualizado = pd.concat([df_existentes, novo], ignore_index=True)
         conn.update(worksheet="Usuarios", data=df_atualizado)
-        
-        st.success("Usuário registrado com sucesso!")
-        
-        # Limpa o cache para garantir que a próxima leitura veja o novo usuário
+
         st.cache_data.clear()
         return True
+
     except Exception as e:
-        st.error(f"Erro técnico ao registrar: {e}")
+        st.error(f"Erro técnico ao registrar usuário: {e}")
         return False

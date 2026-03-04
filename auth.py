@@ -21,13 +21,15 @@ def verificar_login(usuario, senha):
 
         # Aplica .strip() e garante que as colunas são strings antes de comparar
         df["usuario_planilha"] = df["usuario"].astype(str).str.strip()
-        df["senha_planilha"] = df["senha"].astype(str).str.strip()
+        
+        # Normaliza a senha da planilha: remove '.0' se for um número inteiro formatado como float
+        df["senha_planilha"] = df["senha"].astype(str).str.strip().apply(lambda x: x.replace('.0', '') if x.endswith('.0') and x[:-2].isdigit() else x)
 
         # --- DEBUG ATIVO ---
-        st.write(f"DEBUG: Usuário input: '{usuario_limpo}', Tipo: {type(usuario_limpo)}")
-        st.write(f"DEBUG: Senha input: '{senha_limpa}', Tipo: {type(senha_limpa)}")
-        st.write(f"DEBUG: Usuários na planilha: {df['usuario_planilha'].tolist()}")
-        st.write(f"DEBUG: Senhas na planilha: {df['senha_planilha'].tolist()}")
+        st.write(f"DEBUG: Usuário input: \'{usuario_limpo}\' (Tipo: {type(usuario_limpo)}) ")
+        st.write(f"DEBUG: Senha input: \'{senha_limpa}\' (Tipo: {type(senha_limpa)}) ")
+        st.write(f"DEBUG: Usuários na planilha (processado): {df["usuario_planilha"].tolist()}")
+        st.write(f"DEBUG: Senhas na planilha (processado): {df["senha_planilha"].tolist()}")
         # --- FIM DEBUG ATIVO ---
 
         # Filtra o usuário e senha usando os valores limpos

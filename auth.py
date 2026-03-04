@@ -12,6 +12,7 @@ def verificar_login(usuario, senha):
         
         # Se a planilha estiver totalmente vazia ou sem as colunas esperadas
         if df.empty or "usuario" not in df.columns or "senha" not in df.columns:
+            st.warning("Planilha de usuários vazia ou colunas ausentes.")
             return False
             
         # Limpa espaços em branco e converte para string para comparação robusta
@@ -22,13 +23,12 @@ def verificar_login(usuario, senha):
         df["usuario_planilha"] = df["usuario"].astype(str).str.strip()
         df["senha_planilha"] = df["senha"].astype(str).str.strip()
 
-        # --- DEBUG TEMPORÁRIO --- 
-        # st.write(f"Usuário input: '{usuario_limpo}', Tipo: {type(usuario_limpo)}")
-        # st.write(f"Senha input: '{senha_limpa}', Tipo: {type(senha_limpa)}")
-        # if not df.empty:
-        #     st.write(f"Usuários na planilha: {df['usuario_planilha'].tolist()}")
-        #     st.write(f"Senhas na planilha: {df['senha_planilha'].tolist()}")
-        # --- FIM DEBUG TEMPORÁRIO ---
+        # --- DEBUG ATIVO ---
+        st.write(f"DEBUG: Usuário input: '{usuario_limpo}', Tipo: {type(usuario_limpo)}")
+        st.write(f"DEBUG: Senha input: '{senha_limpa}', Tipo: {type(senha_limpa)}")
+        st.write(f"DEBUG: Usuários na planilha: {df['usuario_planilha'].tolist()}")
+        st.write(f"DEBUG: Senhas na planilha: {df['senha_planilha'].tolist()}")
+        # --- FIM DEBUG ATIVO ---
 
         # Filtra o usuário e senha usando os valores limpos
         user_row = df[(df["usuario_planilha"] == usuario_limpo) & 

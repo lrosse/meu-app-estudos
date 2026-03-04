@@ -1,77 +1,121 @@
 import streamlit as st
-from streamlit_gsheets import GSheetsConnection
-import pandas as pd
+from views import tabela, materias, adicionar, revisoes, gerenciar
+from auth import verificar_login, registrar_usuario
 
-# Conexão única compartilhada
-conn = st.connection("gsheets", type=GSheetsConnection)
+st.set_page_config(page_title="Sistema de Estudos", layout="wide", page_icon="📖")
 
+# ---------------------------------------------------------------------------
+# 1. CONTROLE DE SESSÃO
+# ---------------------------------------------------------------------------
+# Chave canônica usada em TODO o sistema: st.session_state.usuario_logado
+# storage.py, auth.py e as views NUNCA devem referenciar outra chave.
+if "logado" not in st.session_state:
+    st.session_state.logado = False
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = ""
 
-def _normalizar_senha(valor: str) -> str:
-    """Corrige o problema do Google Sheets que converte '1234' em '1234.0'."""
-    s = str(valor).strip()
-    if s.endswith(".0") and s[:-2].isdigit():
-        return s[:-2]
-    return s
+# ---------------------------------------------------------------------------
+# 2. TELA DE LOGIN / REGISTRO
+# ---------------------------------------------------------------------------
+if not st.session_state.logado:
+    st.title("🔐 Acesso ao Sistema de Estudos")
 
+    aba_login, aba_registro = st.tabs(["Entrar", "Criar Conta"])
 
-def verificar_login(usuario: str, senha: str) -> bool:
-    """Verifica credenciais contra a aba 'Usuarios' do Google Sheets.
+    with aba_login:
+        with st.form("form_login"):
+            st.subheader("Fazer Login")
+            user_login = st.text_input("Usuário")
+            pass_login = st.text_input("Senha", type="password")
 
-    Retorna True se o par (usuario, senha) for encontrado, False caso contrário.
-    NÃO define session_state aqui — isso é responsabilidade do app.py,
-    que chama esta função e, em caso de sucesso, seta st.session_state.usuario_logado.
-    """
-    try:
-        df = conn.read(worksheet="Usuarios", ttl=0)
+            if st.form_submit_button("Entrar"):
+                if verificar_login(user_login, pass_login):
+                    # Define a chave canônica ANTES do rerun
+                    st.session_state.logado = True
+                    st.session_state.usuario_logado = str(user_login).strip()
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos! ❌")
 
-        if df.empty or "usuario" not in df.columns or "senha" not in df.columns:
-            st.warning("Planilha de usuários vazia ou com estrutura incorreta.")
-            return False
+    with aba_registro:
+        with st.form("form_registro"):
+            st.subheader("Criar Nova Conta")
+            novo_user = st.text_input("Escolha um Nome de Usuário")
+            nova_senha = st.text_input("Crie uma Senha", type="password")
 
-        usuario_limpo = str(usuario).strip()
-        senha_limpa = _normalizar_senha(senha)
+            if st.form_submit_button("Registrar"):
+                if not novo_user or not nova_senha:
+                    st.error("Preencha todos os campos!")
+                elif registrar_usuario(novo_user, nova_senha):
+                    st.success("Conta criada com sucesso! 🎉 Vá na aba 'Entrar' para fazer login.")
+                else:
+                    st.error("Esse nome de usuário já está em uso! Tente outro.")
 
-        df["_u"] = df["usuario"].astype(str).str.strip()
-        df["_s"] = df["senha"].apply(_normalizar_senha)
+    st.stop()  # Interrompe execução — nenhuma view é carregada sem login
 
-        encontrado = df[(df["_u"] == usuario_limpo) & (df["_s"] == senha_limpa)]
-        return not encontrado.empty
+# ---------------------------------------------------------------------------
+# 3. APLICATIVO PRINCIPAL (usuário autenticado)
+# ---------------------------------------------------------------------------
 
-    except Exception as e:
-        st.error(f"Erro ao verificar login: {e}")
-        return False
+# Crachá flutuante com nome do usuário
+st.markdown(
+    f"""
+    <style>
+    .cracha-flutuante {{
+        position: fixed;
+        top: 15px;
+        right: 140px;
+        background-color: #2b2b36;
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        border: 1px solid #4b4b5c;
+        z-index: 9999999;
+        font-size: 14px;
+        font-weight: bold;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        transition: opacity 0.3s ease-in-out;
+    }}
+    html:has([data-testid="stSidebar"][aria-expanded="true"]) .cracha-flutuante {{
+        opacity: 0;
+        pointer-events: none;
+    }}
+    </style>
+    <div class="cracha-flutuante">👨‍🎓 {st.session_state.usuario_logado}</div>
+    """,
+    unsafe_allow_html=True,
+)
 
+# Sidebar
+st.sidebar.markdown(f"### 👨‍🎓 Olá, {st.session_state.usuario_logado}!")
+st.sidebar.markdown("<br>", unsafe_allow_html=True)
 
-def registrar_usuario(usuario: str, senha: str) -> bool:
-    """Cria um novo usuário na aba 'Usuarios'.
+if st.sidebar.button("🚪 Sair (Logout)", use_container_width=True):
+    # Limpa TODAS as chaves de sessão ao fazer logout
+    st.session_state.logado = False
+    st.session_state.usuario_logado = ""
+    st.rerun()
 
-    Retorna True em caso de sucesso, False se o usuário já existir ou ocorrer erro.
-    """
-    try:
-        # Lê registros atuais com ttl=0 para garantir consistência
-        try:
-            df_existentes = conn.read(worksheet="Usuarios", ttl=0)
-        except Exception:
-            df_existentes = pd.DataFrame(columns=["usuario", "senha"])
+st.sidebar.markdown("---")
 
-        if df_existentes is None or df_existentes.empty or "usuario" not in df_existentes.columns:
-            df_existentes = pd.DataFrame(columns=["usuario", "senha"])
+pagina = st.sidebar.radio(
+    "Navegação",
+    [
+        "Revisões de Hoje",
+        "Tabela Completa",
+        "Por Matéria",
+        "Adicionar Tópico",
+        "Gerenciar Tópicos",
+    ],
+)
 
-        usuario_limpo = str(usuario).strip()
-
-        # Verifica duplicidade
-        usuarios_existentes = df_existentes["usuario"].astype(str).str.strip().values
-        if usuario_limpo in usuarios_existentes:
-            return False  # Usuário já existe — app.py exibe a mensagem
-
-        # Cria e persiste o novo registro
-        novo = pd.DataFrame([{"usuario": usuario_limpo, "senha": str(senha).strip()}])
-        df_atualizado = pd.concat([df_existentes, novo], ignore_index=True)
-        conn.update(worksheet="Usuarios", data=df_atualizado)
-
-        st.cache_data.clear()
-        return True
-
-    except Exception as e:
-        st.error(f"Erro técnico ao registrar usuário: {e}")
-        return False
+if pagina == "Revisões de Hoje":
+    revisoes.renderizar()
+elif pagina == "Tabela Completa":
+    tabela.renderizar()
+elif pagina == "Por Matéria":
+    materias.renderizar()
+elif pagina == "Adicionar Tópico":
+    adicionar.renderizar()
+elif pagina == "Gerenciar Tópicos":
+    gerenciar.renderizar()
